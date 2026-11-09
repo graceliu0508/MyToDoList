@@ -1,0 +1,244 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// This security rules file assumes the following data structures:
+//
+// Collection: users
+// Document ID: {userId} (matches Firebase Auth UID)
+// Fields:
+//   - uid: string (required/optional, immutable, must match userId) - User's Firebase Auth UID
+//   - email: string (optional, <= 254 chars) - User's email address for workspace collaboration
+//   - displayName: string (optional, <= 100 chars) - User's display name
+//   - photoURL: string (optional, <= 2000 chars) - User's avatar URL
+//   - createdAt: timestamp or string (optional) - Profile creation time
+//   - updatedAt: timestamp or string (optional) - Last profile sync time
+//   - lastLoginAt: timestamp or string (optional) - Last login timestamp
+//
+// Collection: todoLists
+// Document ID: {listId} (auto-generated ID)
+// Fields:
+//   - name: string (required, 1..100 chars) - Name of the collaborative to-do list
+//   - description: string (optional, <= 500 chars) - Optional description of the list
+//   - ownerId: string (required, immutable, == request.auth.uid on create) - Creator/owner UID
+//   - ownerName: string (optional, <= 100 chars) - Creator display name
+//   - ownerEmail: string (optional, <= 254 chars) - Creator email
+//   - memberIds: list of strings (required, 1..100 items, contains ownerId) - UIDs of list members
+//   - members: list or map (optional, <= 100 entries) - Denormalized member profile summaries
+//   - inviteCode: string (optional, <= 32 chars) - Invite code for joining the workspace
+//   - icon: string (optional, <= 32 chars) - Optional icon/emoji identifier
+//   - color: string (optional, <= 32 chars) - Optional color theme identifier
+//   - createdAt: timestamp or string (optional, immutable when present) - Creation time
+//   - updatedAt: timestamp or string (optional) - Last update time
+//
+// Subcollection: todoLists/{listId}/tasks
+// Document ID: {taskId} (auto-generated ID)
+// Fields:
+//   - title: string (required, 1..500 chars) - Task title
+//   - completed: bool (required) - Task completion status
+//   - createdByUid: string (required on create, immutable, == request.auth.uid on create) - Creator UID
+//   - createdBy: string or map (optional) - Creator name or metadata
+//   - createdByName: string (optional, <= 100 chars) - Creator display name
+//   - createdByPhoto: string (optional, <= 2000 chars) - Creator avatar URL
+//   - description: string (optional, <= 2000 chars) - Task details/notes
+//   - category: string (optional, <= 60 chars) - Task category/tag
+//   - priority: string (optional, in ['low', 'medium', 'high']) - Task priority
+//   - dueDate: string or timestamp (optional, <= 64 chars if string) - Due date
+//   - assigneeUid: string (optional, <= 128 chars) - Assigned member UID
+//   - assigneeName: string (optional, <= 100 chars) - Assigned member display name
+//   - assigneePhoto: string (optional, <= 2000 chars) - Assigned member avatar URL
+//   - updatedBy: string (optional, <= 100 chars) - Last updater display name
+//   - updatedByUid: string (optional, <= 128 chars) - Last updater UID
+//   - createdAt: timestamp or string (optional) - Task creation time
+//   - updatedAt: timestamp or string (optional) - Task last update time
+//   - completedAt: timestamp or string (optional) - Task completion timestamp
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if the authenticated user owns the user document
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Verify UID hasn't been tampered with on create
+    function uidUnchanged() {
+      return !('uid' in request.resource.data) ||
+        request.resource.data.uid == request.auth.uid;
+    }
+
+    // Ensure uid field is not modified on update
+    function uidNotModified() {
+      return !('uid' in request.resource.data) ||
+        !('uid' in resource.data) ||
+        request.resource.data.uid == resource.data.uid;
+    }
+
+    // Validate required fields exist
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // Validate string length on request.resource.data
+    function validStringLength(field, minLen, maxLen) {
+      return request.resource.data[field] is string &&
+        request.resource.data[field].size() >= minLen &&
+        request.resource.data[field].size() <= maxLen;
+    }
+
+    // Validate optional string (if present and non-null, must be string within length bounds)
+    function isValidOptionalString(field, minLen, maxLen) {
+      return !(field in request.resource.data) ||
+        request.resource.data[field] == null ||
+        (request.resource.data[field] is string &&
+         request.resource.data[field].size() >= minLen &&
+         request.resource.data[field].size() <= maxLen);
+    }
+
+    // Validate that a list is a list and enforces size limits
+    function isValidList(list, maxSize) {
+      return list is list && list.size() <= maxSize;
+    }
+
+    // Check if the authenticated user is a member of the specified todoList
+    function isListMember(listId) {
+      return isAuthenticated() &&
+        request.auth.uid in get(/databases/$(database)/documents/todoLists/$(listId)).data.memberIds;
+    }
+
+    // ===============================================================
+    // Domain Validators (Used in BOTH create and update)
+    // ===============================================================
+
+    function isValidUser(data, userId) {
+      return (!('uid' in data) || (data.uid is string && data.uid == userId)) &&
+        isValidOptionalString('email', 0, 254) &&
+        isValidOptionalString('displayName', 0, 100) &&
+        isValidOptionalString('photoURL', 0, 2000) &&
+        // Prevent privilege escalation via self-assigned role flags
+        !('role' in data) &&
+        !('isAdmin' in data);
+    }
+
+    function isValidTodoList(data) {
+      return hasRequiredFields(['name', 'ownerId', 'memberIds']) &&
+        validStringLength('name', 1, 100) &&
+        data.ownerId is string &&
+        data.ownerId.size() > 0 &&
+        data.ownerId.size() <= 128 &&
+        isValidList(data.memberIds, 100) &&
+        data.memberIds.size() >= 1 &&
+        isValidOptionalString('description', 0, 500) &&
+        isValidOptionalString('inviteCode', 0, 32) &&
+        isValidOptionalString('ownerName', 0, 100) &&
+        isValidOptionalString('ownerEmail', 0, 254) &&
+        isValidOptionalString('icon', 0, 32) &&
+        isValidOptionalString('color', 0, 32) &&
+        (!('members' in data) || data.members == null ||
+          (data.members is list && data.members.size() <= 100) ||
+          (data.members is map && data.members.size() <= 100));
+    }
+
+    function isValidTask(data) {
+      return hasRequiredFields(['title', 'completed']) &&
+        validStringLength('title', 1, 500) &&
+        data.completed is bool &&
+        isValidOptionalString('createdByUid', 1, 128) &&
+        isValidOptionalString('createdByName', 0, 100) &&
+        isValidOptionalString('createdByPhoto', 0, 2000) &&
+        isValidOptionalString('description', 0, 2000) &&
+        isValidOptionalString('notes', 0, 2000) &&
+        isValidOptionalString('category', 0, 60) &&
+        isValidOptionalString('priority', 0, 20) &&
+        isValidOptionalString('dueDate', 0, 64) &&
+        isValidOptionalString('assigneeUid', 0, 128) &&
+        isValidOptionalString('assigneeName', 0, 100) &&
+        isValidOptionalString('assigneePhoto', 0, 2000) &&
+        isValidOptionalString('updatedBy', 0, 100) &&
+        isValidOptionalString('updatedByUid', 0, 128) &&
+        isValidOptionalString('updatedByName', 0, 100);
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    // 1. User Profiles
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+
+      allow create: if isOwner(userId) &&
+        uidUnchanged() &&
+        isValidUser(request.resource.data, userId);
+
+      allow update: if isOwner(userId) &&
+        uidNotModified() &&
+        isValidUser(request.resource.data, userId);
+
+      allow delete: if false;
+    }
+
+    // 2. Collaborative To-Do Lists (Workspaces)
+    match /todoLists/{listId} {
+      // Authenticated users can read lists (supports listing user's workspaces and querying by inviteCode)
+      allow read: if isAuthenticated();
+
+      // Authenticated user can create a list if they set themselves as ownerId and include themselves in memberIds
+      allow create: if isAuthenticated() &&
+        isValidTodoList(request.resource.data) &&
+        request.resource.data.ownerId == request.auth.uid &&
+        request.auth.uid in request.resource.data.memberIds;
+
+      // Authenticated user can update a list if ownerId is unchanged, schema is valid, and either:
+      // a) they are already a member of the list, OR
+      // b) they are joining the list via invite and only modifying memberIds, members, and updatedAt
+      allow update: if isAuthenticated() &&
+        isValidTodoList(request.resource.data) &&
+        request.resource.data.ownerId == resource.data.ownerId &&
+        (
+          (request.auth.uid in resource.data.memberIds) ||
+          (
+            request.auth.uid in request.resource.data.memberIds &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds', 'members', 'updatedAt'])
+          )
+        );
+
+      // Only the list owner can delete the list
+      allow delete: if isAuthenticated() &&
+        resource.data.ownerId == request.auth.uid;
+
+      // 3. Tasks inside a Collaborative To-Do List
+      match /tasks/{taskId} {
+        allow read, delete: if isListMember(listId);
+
+        allow create: if isListMember(listId) &&
+          isValidTask(request.resource.data) &&
+          request.resource.data.createdByUid is string &&
+          request.resource.data.createdByUid == request.auth.uid;
+
+        allow update: if isListMember(listId) &&
+          isValidTask(request.resource.data) &&
+          (!('createdByUid' in resource.data) ||
+           request.resource.data.createdByUid == resource.data.createdByUid);
+      }
+    }
+
+    // Default deny for all other paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

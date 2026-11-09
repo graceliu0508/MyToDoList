@@ -1,0 +1,11 @@
+{
+  "name": "my-to-do-list",
+  "version": "1.0.0",
+  "description": "MyToDoList — 基於 Firebase (my-to-do-list-50788) 的多人即時協作待辦清單網頁應用程式",
+  "private": true,
+  "scripts": {
+    "start": "npx -y firebase-tools@latest serve --only hosting --port 5000",
+    "deploy": "npx -y firebase-tools@latest deploy --project my-to-do-list-50788",
+    "deploy:rules": "npx -y firebase-tools@latest deploy --only firestore:rules --project my-to-do-list-50788"
+  }
+}

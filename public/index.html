@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MyToDoList — 多人即時協作待辦清單</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <!-- 頂部導覽列 -->
+  <header class="topbar">
+    <div class="topbar-brand">
+      <div class="brand-logo" aria-hidden="true">✓</div>
+      <div>
+        <h1 class="brand-title">MyToDoList</h1>
+        <span class="brand-subtitle">Firebase 專案：<code>my-to-do-list-50788</code></span>
+      </div>
+    </div>
+
+    <div class="topbar-actions">
+      <span id="connectionBadge" class="status-badge status-connecting">連線準備中</span>
+      <button id="openConfigBtn" class="btn btn-ghost btn-sm" type="button" title="檢視或設定 Firebase 金鑰">
+        ⚙️ Firebase 設定
+      </button>
+      <div id="userProfileArea" class="user-profile hidden">
+        <img id="userAvatar" class="user-avatar" src="" alt="使用者頭像" />
+        <div class="user-meta">
+          <span id="userName" class="user-name"></span>
+          <span id="userEmail" class="user-email"></span>
+        </div>
+        <button id="signOutBtn" class="btn btn-outline btn-sm" type="button">登出</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 未登入歡迎畫面 -->
+  <main id="authScreen" class="auth-screen">
+    <div class="auth-card">
+      <div class="auth-badge">多人即時協作 · Cloud Firestore</div>
+      <h2>與團隊即時同步每一項待辦任務</h2>
+      <p class="auth-desc">
+        使用您的 Google 帳號一鍵登入 <strong>MyToDoList</strong>，建立共享待辦清單、透過邀請碼邀請夥伴加入，所有勾選與新增皆可毫秒級即時同步。
+      </p>
+
+      <div id="configWarningBanner" class="alert-banner hidden">
+        <div>
+          <strong>⚠️ 尚未填入 Firebase Web API Key</strong>
+          <p>請點擊下方「設定 Firebase 金鑰」貼上 <code>my-to-do-list-50788</code> 的 Web SDK 設定，或先使用本機協作預覽模式體驗完整功能。</p>
+        </div>
+        <button id="bannerConfigBtn" class="btn btn-sm btn-secondary" type="button">設定 Firebase 金鑰</button>
+      </div>
+
+      <div class="auth-buttons">
+        <button id="googleSignInBtn" class="btn btn-google" type="button">
+          <svg class="google-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+            <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.4 1 3.5 3.6 1.6 7.4l3.7 2.8C6.2 7.2 8.9 5 12 5z"/>
+            <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.6l3.7 2.9c2.2-2 3.7-5 3.7-8.7z"/>
+            <path fill="#FBBC05" d="M5.3 14.8c-.2-.8-.4-1.6-.4-2.5s.2-1.7.4-2.5L1.6 7C.6 9 0 11.2 0 13.5s.6 4.5 1.6 6.5l3.7-2.9z"/>
+            <path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3.1 0-5.8-2.1-6.7-5l-3.7 2.9C3.5 21.4 7.4 24 12 24z"/>
+          </svg>
+          <span>使用 Google 帳號登入</span>
+        </button>
+
+        <button id="demoModeBtn" class="btn btn-outline" type="button">
+          🚀 先以訪客協作模式體驗
+        </button>
+      </div>
+
+      <div class="auth-features">
+        <div class="feature-item">
+          <span class="feature-icon">🔐</span>
+          <div>
+            <strong>Google 安全驗證</strong>
+            <p>整合 Firebase Authentication，保障清單存取權限</p>
+          </div>
+        </div>
+        <div class="feature-item">
+          <span class="feature-icon">⚡</span>
+          <div>
+            <strong>多人即時同步</strong>
+            <p>支援邀請碼加入共享清單、指派負責人與狀態同步</p>
+          </div>
+        </div>
+        <div class="feature-item">
+          <span class="feature-icon">📊</span>
+          <div>
+            <strong>優先級與進度追蹤</strong>
+            <p>支援高/中/低優先級、截止日、分類標籤與完成率統計</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 登入後主工作區 -->
+  <div id="appWorkspace" class="workspace hidden">
+    <!-- 左側邊欄：協作清單列表 -->
+    <aside class="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-header">
+          <h2>協作清單空間</h2>
+          <button id="newListModalBtn" class="btn btn-primary btn-xs" type="button">＋ 新增清單</button>
+        </div>
+        <ul id="todoListsContainer" class="list-nav"></ul>
+      </div>
+
+      <div class="sidebar-section join-box">
+        <h3>🔗 加入他人的協作清單</h3>
+        <p class="join-hint">輸入夥伴分享的 6 位數邀請碼即可共同編輯：</p>
+        <form id="joinListForm" class="join-form">
+          <input
+            id="inviteCodeInput"
+            type="text"
+            maxlength="8"
+            placeholder="例如：AB12CD"
+            autocomplete="off"
+            required
+          />
+          <button class="btn btn-secondary btn-sm" type="submit">加入</button>
+        </form>
+      </div>
+    </aside>
+
+    <!-- 右側主內容：目前選取的待辦清單 -->
+    <section class="main-panel">
+      <!-- 清單標題與協作成員資訊 -->
+      <div class="list-header-card">
+        <div class="list-title-group">
+          <div class="list-title-row">
+            <h2 id="currentListName">載入清單中...</h2>
+            <span id="currentListRoleBadge" class="role-badge">成員</span>
+          </div>
+          <p id="currentListDesc" class="list-desc"></p>
+        </div>
+
+        <div class="list-collab-bar">
+          <div class="collab-Info">
+            <span class="collab-label">協作成員：</span>
+            <div id="memberAvatars" class="member-avatars"></div>
+          </div>
+
+          <div class="invite-controls">
+            <div class="invite-pill" title="分享此邀請碼給協作夥伴">
+              <span>邀請碼：</span>
+              <strong id="currentInviteCode">------</strong>
+              <button id="copyInviteBtn" class="btn-icon" type="button" title="複製邀請連結與邀請碼">📋 複製邀請</button>
+            </div>
+            <button id="deleteListBtn" class="btn btn-danger-ghost btn-sm hidden" type="button" title="刪除此清單">
+              🗑️ 刪除清單
+            </button>
+          </div>
+        </div>
+
+        <!-- 進度統計列 -->
+        <div class="stats-grid">
+          <div class="stat-item">
+            <span class="stat-label">總任務數</span>
+            <strong id="statTotal" class="stat-value">0</strong>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">進行中</span>
+            <strong id="statActive" class="stat-value text-amber">0</strong>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">已完成</span>
+            <strong id="statCompleted" class="stat-value text-emerald">0</strong>
+          </div>
+          <div class="stat-item stat-progress">
+            <div class="progress-header">
+              <span class="stat-label">團隊完成進度</span>
+              <strong id="statPercent">0%</strong>
+            </div>
+            <div class="progress-track">
+              <div id="progressBarFill" class="progress-fill" style="width: 0%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 新增待辦事項表單 -->
+      <form id="addTaskForm" class="task-composer">
+        <div class="composer-main">
+          <input
+            id="taskTitleInput"
+            type="text"
+            placeholder="輸入待辦事項名稱（按 Enter 快速新增，所有協作成員將即時看到更新）..."
+            maxlength="300"
+            required
+          />
+          <button class="btn btn-primary" type="submit">＋ 新增任務</button>
+        </div>
+        <div class="composer-options">
+          <label class="option-field">
+            <span>優先級</span>
+            <select id="taskPriorityInput">
+              <option value="medium" selected>🟡 一般優先</option>
+              <option value="high">🔴 高優先級</option>
+              <option value="low">🟢 低優先級</option>
+            </select>
+          </label>
+
+          <label class="option-field">
+            <span>分類標籤</span>
+            <select id="taskCategoryInput">
+              <option value="工作">💼 工作</option>
+              <option value="專案">🚀 專案</option>
+              <option value="會議">📅 會議</option>
+              <option value="採購">🛒 採購</option>
+              <option value="個人">🌱 個人</option>
+            </select>
+          </label>
+
+          <label class="option-field">
+            <span>指派給</span>
+            <select id="taskAssigneeInput">
+              <option value="">🙌 不限 / 任何人</option>
+            </select>
+          </label>
+
+          <label class="option-field">
+            <span>截止日期</span>
+            <input id="taskDueDateInput" type="date" />
+          </label>
+        </div>
+      </form>
+
+      <!-- 篩選與搜尋工具列 -->
+      <div class="toolbar">
+        <div class="filter-tabs" role="tablist">
+          <button class="filter-tab active" data-filter="all" type="button">全部</button>
+          <button class="filter-tab" data-filter="active" type="button">待完成</button>
+          <button class="filter-tab" data-filter="completed" type="button">已完成</button>
+          <button class="filter-tab" data-filter="mine" type="button">指派給我</button>
+          <button class="filter-tab" data-filter="high" type="button">🔴 高優先</button>
+        </div>
+
+        <div class="search-box">
+          <input id="searchTaskInput" type="search" placeholder="🔍 搜尋任務、標籤或負責人..." />
+        </div>
+      </div>
+
+      <!-- 待辦事項清單容器 -->
+      <div id="tasksContainer" class="tasks-list"></div>
+    </section>
+  </div>
+
+  <!-- 新增協作清單 Modal -->
+  <div id="newListModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>建立新的多人協作清單</h3>
+        <button id="closeNewListModalBtn" class="btn-close" type="button">✕</button>
+      </div>
+      <form id="createListForm" class="modal-body">
+        <label class="form-group">
+          <span>清單名稱 *</span>
+          <input id="newListNameInput" type="text" placeholder="例如：Q4 產品上線待辦清單" maxlength="60" required />
+        </label>
+        <label class="form-group">
+          <span>清單說明（選填）</span>
+          <input id="newListDescInput" type="text" placeholder="例如：工程與設計團隊每日同步事項" maxlength="160" />
+        </label>
+        <div class="modal-footer">
+          <button id="cancelNewListBtn" class="btn btn-ghost" type="button">取消</button>
+          <button class="btn btn-primary" type="submit">建立清單</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Firebase 設定 Modal -->
+  <div id="configModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <h3>⚙️ Firebase 專案設定 (<code>my-to-do-list-50788</code>)</h3>
+        <button id="closeConfigModalBtn" class="btn-close" type="button">✕</button>
+      </div>
+      <form id="saveConfigForm" class="modal-body">
+        <p class="modal-hint">
+          請確認或貼上 Firebase Console &gt; Project Settings (`my-to-do-list-50788`) 中的 Web App <code>firebaseConfig</code> 金鑰。儲存後將自動重新連線至真實 Firebase Authentication 與 Cloud Firestore。
+        </p>
+        <div class="form-grid">
+          <label class="form-group">
+            <span>apiKey *</span>
+            <input id="cfgApiKey" type="text" placeholder="AIzaSy..." required />
+          </label>
+          <label class="form-group">
+            <span>authDomain *</span>
+            <input id="cfgAuthDomain" type="text" value="my-to-do-list-50788.firebaseapp.com" required />
+          </label>
+          <label class="form-group">
+            <span>projectId *</span>
+            <input id="cfgProjectId" type="text" value="my-to-do-list-50788" required />
+          </label>
+          <label class="form-group">
+            <span>storageBucket</span>
+            <input id="cfgStorageBucket" type="text" value="my-to-do-list-50788.firebasestorage.app" />
+          </label>
+          <label class="form-group">
+            <span>messagingSenderId</span>
+            <input id="cfgSenderId" type="text" placeholder="例如：123456789012" />
+          </label>
+          <label class="form-group">
+            <span>appId</span>
+            <input id="cfgAppId" type="text" placeholder="例如：1:123456789012:web:abcdef..." />
+          </label>
+        </div>
+        <div class="modal-footer">
+          <button id="resetConfigBtn" class="btn btn-ghost" type="button">還原預設值</button>
+          <button class="btn btn-primary" type="submit">儲存並連線 Firebase</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 吐司訊息通知 -->
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
