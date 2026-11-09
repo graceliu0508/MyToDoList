@@ -1,14 +1,12 @@
 // Firebase 專案設定檔 (Project ID: my-to-do-list-50788)
-// 若透過 Firebase CLI 自動抓取後，此檔案會自動填入正式 Web App 金鑰；
-// 同時支援在網頁介面右上角「Firebase 設定」隨時檢視或更新設定。
 
 export const defaultFirebaseConfig = {
-  apiKey: "REPLACE_WITH_YOUR_FIREBASE_API_KEY",
+  apiKey: "AIzaSyAmFUkr2RBd4FzkLkuuiUBkPYBfcay9dSw",
   authDomain: "my-to-do-list-50788.firebaseapp.com",
   projectId: "my-to-do-list-50788",
   storageBucket: "my-to-do-list-50788.firebasestorage.app",
-  messagingSenderId: "REPLACE_WITH_SENDER_ID",
-  appId: "REPLACE_WITH_APP_ID"
+  messagingSenderId: "65821009750",
+  appId: "1:65821009750:web:613eea786cd64224e0d8f7"
 };
 
 export function getActiveFirebaseConfig() {
@@ -16,7 +14,7 @@ export function getActiveFirebaseConfig() {
     const saved = localStorage.getItem("mytodolist_firebase_config");
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (parsed && parsed.apiKey && parsed.projectId) {
+      if (parsed && parsed.apiKey && !parsed.apiKey.startsWith("REPLACE_") && parsed.projectId) {
         return parsed;
       }
     }

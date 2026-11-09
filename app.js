@@ -234,12 +234,15 @@ googleSignInBtn.addEventListener("click", async () => {
     showToast("🎉 Google 帳號登入成功！");
   } catch (err) {
     console.error("Google 登入失敗:", err);
+    const host = window.location.hostname || "graceliu0508.github.io";
     if (err.code === "auth/unauthorized-domain") {
-      showToast("⚠️ 網域尚未授權：請至 Firebase Console > Authentication > Settings > Authorized domains 加入 localhost");
+      showToast(`⚠️ 網域尚未授權：請至 Firebase Console > Authentication > Settings > Authorized domains 新增「${host}」`);
+    } else if (err.code === "auth/operation-not-allowed") {
+      showToast("⚠️ 尚未啟用 Google 登入：請至 Firebase Console > Authentication > Sign-in method 啟用 Google 提供者");
     } else if (err.code === "auth/popup-closed-by-user") {
       showToast("已取消 Google 登入視窗");
     } else {
-      showToast(`Google 登入失敗：${err.message}`);
+      showToast(`Google 登入失敗 (${err.code || "error"})：${err.message}`);
     }
   }
 });
